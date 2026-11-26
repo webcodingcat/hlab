@@ -11,7 +11,7 @@ STATUS: DONE
 - Base branch: main
 - Last done: phase 30 merged into main (2026-11-26): private repository `webcodingcat/hlab` created and `main` pushed, CI green on f19f01a (second run, after the WiX EULA step and an SBOX-18 test fix), release workflow in place; full `task e2e` green apart from the known CLI-02/load_balancers flake (three reruns green)
 - Released (2026-11-26): `main` holds milestone 1 (3936af8, CI green) and is pushed; v0.1.0 published at https://github.com/webcodingcat/hlab/releases/tag/v0.1.0 with hlab-0.1.0.msi, hlab-setup-0.1.0.exe and SHA256SUMS.txt
-- Next: /wcc:report closes REL-03 with the download check, then /wcc:change plans milestone 2
+- Next: REL-03 fits (2026-11-26), no manual checks open; /wcc:change plans milestone 2
 
 ## Open manual checks
 
@@ -19,7 +19,7 @@ STATUS: DONE
      one line each: "- UI-04 (03): <requirement>". The guide is in
      phases/<id>/CHECKS.md. /wcc:report walks through them. -->
 
-- REL-03 (30): a tag vX.Y.Z builds and publishes MSI, setup EXE and SHA256SUMS.txt as a GitHub release
+- none
 
 ## Open decisions
 

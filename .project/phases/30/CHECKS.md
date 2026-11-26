@@ -22,5 +22,5 @@
 - Setup: the first real release v0.1.0 is made by `/wcc:release`; until then this check covers the workflow and the documentation.
 - Steps: 1. Open `release.yml` on GitHub and check that it starts on tags `vX.Y.Z`. 2. Read the "Installation" section of the README and the "Making a release" section of `docs/development/releasing.md`. 3. After `/wcc:release`: open the Releases page, download `hlab-setup-0.1.0.exe` and `SHA256SUMS.txt`, and run the README's `Get-FileHash` check.
 - Expected: the workflow and both documents describe the same steps; after v0.1.0 the release holds `hlab-0.1.0.msi`, `hlab-setup-0.1.0.exe` and `SHA256SUMS.txt`, and the check prints True.
-- Result: open
+- Result: fits (2026-11-26; v0.1.0 holds hlab-0.1.0.msi, hlab-setup-0.1.0.exe and SHA256SUMS.txt, the README check printed True)
 - Note (2026-11-26): steps 1 and 2 fit (workflow, README and releasing.md describe the same steps); step 3, the download check, waits for v0.1.0 from /wcc:release
