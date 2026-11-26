@@ -1225,7 +1225,7 @@ in ARCHITECTURE.md or the plan.
 - Type: assumption
 - Phase: phase 22
 - What: `net use` failed with system error 67 in phase 20 because Git Bash collapsed the leading `\` of the UNC path; smb.conf and `internal/hostnet` stay unchanged.
-- Why: run from PowerShell or Go, `net use` mapped, wrote and read a box's and a subaccount's share without any change (phases/22/RESEARCH.md); SBOX-22 proves it, and a failure with an intact path becomes an open decision.
+- Why: run from PowerShell or Go, `net use` mapped, wrote and read a box's and a subaccount's share without any change (phases/22/RESEARCH.md (tag `wcc-milestone-1`)); SBOX-22 proves it, and a failure with an intact path becomes an open decision.
 - Cost of change: low
 
 ## 2026-11-23 SBOX-22 is one e2e test in its own file
@@ -2181,8 +2181,8 @@ in ARCHITECTURE.md or the plan.
 
 - Type: decision
 - Phase: phase 13
-- What: network attach/detach and `change_alias_ips` queue on the network, subnet and route actions on the network, LB target and service actions on the LB and its target servers, volume attach/detach and floating/primary IP assign/unassign on the server, firewall apply/remove on the servers, a server create's firewall actions on the firewall, and RRSet create, delete and actions on the zone (zone-level actions keep refusing); all others refuse on every ref as before (table in phases/13/PLAN.md "Interfaces", deviation in deviations.md and `api.Deviations()`).
-- Why: OpenTofu creates sibling resources in parallel and does not retry on `locked` (phases/13/RESEARCH.md §4), while Hetzner accepts these configurations.
+- What: network attach/detach and `change_alias_ips` queue on the network, subnet and route actions on the network, LB target and service actions on the LB and its target servers, volume attach/detach and floating/primary IP assign/unassign on the server, firewall apply/remove on the servers, a server create's firewall actions on the firewall, and RRSet create, delete and actions on the zone (zone-level actions keep refusing); all others refuse on every ref as before (table in phases/13/PLAN.md (tag `wcc-milestone-1`) "Interfaces", deviation in deviations.md and `api.Deviations()`).
+- Why: OpenTofu creates sibling resources in parallel and does not retry on `locked` (phases/13/RESEARCH.md (tag `wcc-milestone-1`) §4), while Hetzner accepts these configurations.
 - Cost of change: medium
 
 ## 2026-11-21 Client matrix rows register through init()

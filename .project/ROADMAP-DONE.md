@@ -6,7 +6,7 @@ this file; it keeps the details for looking things up.
 
 ## Milestone 1: first version
 
-- [x ] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → phases/B4/
+- [x ] B4 Backlog: seed ISO on early network attach, snapshot rollback leftovers, private network after cloud start, duplicate convention tests → wcc-milestone-1
 
 - [x] 29 More system images.
       Requirements: CAT-09, SRV-23, SRV-24.
@@ -143,7 +143,7 @@ this file; it keeps the details for looking things up.
       2. `task catalog` writes the storage box types with prices from the
          real API.
 
-- [x] B3 Backlog: console times and labels, server power and delete fixes → phases/B3/
+- [x] B3 Backlog: console times and labels, server power and delete fixes → wcc-milestone-1
 
 - [x] 17 MCP server.
       Requirements: MCP-01, MCP-02, MCP-03, MCP-04, MCP-05.
@@ -205,7 +205,7 @@ this file; it keeps the details for looking things up.
       Requirements: UI-02 (part: remaining resource types; completes it),
       UI-09, UI-10, CAT-10.
       Depends on: 11.
-      Research: phases/11/RESEARCH.md.
+      Research: phases/11/RESEARCH.md (tag `wcc-milestone-1`).
       Scope: the sections Volumes, Load Balancers, Networks, Firewalls,
       Floating IPs, Primary IPs, DNS, Certificates, Placement Groups,
       Images and ISOs on the frame of phase 11; after the manual check the
@@ -226,7 +226,7 @@ this file; it keeps the details for looking things up.
       Requirements: UI-02 (part: shared frame, servers, SSH keys; done
       after phase 14).
       Depends on: 10.
-      Research: phases/11/RESEARCH.md (field order of the Hetzner create
+      Research: phases/11/RESEARCH.md (tag `wcc-milestone-1`) (field order of the Hetzner create
       forms; also used by phase 14).
       Scope: the shared frame every resource section builds on - API client
       over `bridge.Call`, action polling with a toast, detail and tab frame,
@@ -289,7 +289,7 @@ this file; it keeps the details for looking things up.
       2. Applying a firewall by label selector filters a server that gets
          the label later.
 
-- [x] B1 Backlog: restart recovery, cloud-init and dev-loop bugs → phases/B1/
+- [x] B1 Backlog: restart recovery, cloud-init and dev-loop bugs → wcc-milestone-1
 
 - [x] 04 Images, backups, rescue, ISOs and volumes.
       Requirements: SRV-11, SRV-12, SRV-13, SRV-14, SRV-15, CAT-08, VOL-01,
@@ -381,7 +381,7 @@ this file; it keeps the details for looking things up.
          zone answers with that certificate; with the trust switch on,
          `curl https://<name>` succeeds on host and WSL2.
 
-- [x] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → phases/B2/
+- [x] B2 Backlog: VLAN release at project deletion, LB health check, docs and e2e test fixes → wcc-milestone-1
 
 - [x] 25 Fault model, API errors and rate limits.
       Requirements: FAULT-01, FAULT-02, FAULT-03, FAULT-04, FAULT-12,
