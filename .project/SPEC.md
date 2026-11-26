@@ -268,7 +268,15 @@ appear here, only names.
     uninstallation).
 
 
-## Repository, CI and releases
+## Repository
+
+- Host: `https://github.com/webcodingcat/hlab`, private; the user makes it
+  public themselves
+- Tool: `gh` logged in with the scopes `repo` and `workflow`
+- Licence: Apache-2.0
+- CI: `.github/workflows/ci.yml`, on pushes to `main` and on pull requests
+  against `main`: `task build`, `task test`, `task lint`, frontend unit
+  tests and the installer build; end-to-end tests stay local
 
 - Repository `https://github.com/webcodingcat/hlab`, Apache-2.0 (`LICENSE`
   in the root). Phase 30 creates it private with `gh` (the user's login)
@@ -302,7 +310,7 @@ appear here, only names.
 - Before the tag: the CI on the pushed `main` commit is green
   (`gh run list --commit <sha>`)
 - The tag starts: the workflow `.github/workflows/release.yml` (see
-  "Repository, CI and releases")
+  "Repository")
 - Done when: `gh release view vX.Y.Z` lists `hlab-X.Y.Z.msi`,
   `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt`
 

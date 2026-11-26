@@ -27,6 +27,14 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-26 Upgrade to wcc 0.35.1
+
+- Type: approval
+- Phase: upgrade
+- What: project files brought from wcc 0.34.0 to 0.35.1: SPEC.md section "Repository, CI and releases" renamed to "Repository" with the template keys Host, Tool, Licence and CI.
+- Why: the skills of the installed version search for these keys and rules
+- Cost of change: low
+
 ## 2026-11-26 CI and release accept the WiX licence
 
 - Type: decision
