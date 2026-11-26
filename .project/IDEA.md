@@ -130,6 +130,26 @@ official clients.
 - The state has a version number from the start; until a 1.0 the user
   declares, an update may discard the state with a warning.
 
+## Scope of milestone 2
+
+- Linux as a full host next to Windows, with everything the first version
+  does: Ubuntu 24.04 and 26.04 LTS and Debian 13, x86_64, with KVM and
+  libvirt; Windows stays fully supported.
+- The service runs as a systemd service with root rights only while the
+  cloud runs, never at boot; members of the group `hlab` start and stop the
+  cloud and use `hlab` and the tray without a password prompt.
+- Host names resolve through systemd-resolved (one routing domain per
+  zone), which the package depends on; on Debian it is installed with the
+  package and becomes the system resolver.
+- Only programs on the host reach the servers; containers (Docker,
+  Podman) are not supported, but an installed Docker, ufw or firewalld
+  does not block hlab's traffic.
+- The tray program with its full console runs on GNOME (Ubuntu's
+  AppIndicator extension; on Debian the user installs it).
+- One `.deb` package for all three distributions, published in the GitHub
+  release; `apt remove` removes every VM, network object and DNS rule but
+  keeps the user data, `apt purge` also deletes the data.
+
 ## Target vision (final scope)
 
 The architecture is designed for this target vision; only the first version
@@ -157,11 +177,13 @@ is built for now.
 ## Constraints
 
 - Go; the API service runs as a Windows service with admin rights on the
-  host, only while the cloud runs; the tray window uses Wails v3. No further
+  host (on Linux a systemd service as root), only while the cloud runs; the tray window uses Wails v3. No further
   stack requirements; the rest is chosen in the spec.
 - Everything platform-specific behind interfaces (later KVM/libvirt).
 - Any Windows edition with Hyper-V and desktop, x64: Windows 10/11
-  Pro/Enterprise/Education, Windows Server with Desktop Experience.
+  Pro/Enterprise/Education, Windows Server with Desktop Experience; from
+  milestone 2 also Ubuntu 24.04/26.04 LTS and Debian 13 with a desktop,
+  x86_64, KVM and libvirt.
 - Clients are installed by the user (Ansible in WSL2); no telemetry; hlab
   needs no outside service except image and ISO downloads and the optional
   server type update from the real Hetzner API.
@@ -172,16 +194,18 @@ is built for now.
 
 - Repository: public on GitHub (`webcodingcat/hlab`) under Apache-2.0
 - Publication: release artifacts: a GitHub release per version with the
-  MSI, the setup EXE and `SHA256SUMS.txt`
+  MSI, the setup EXE, from milestone 2 the `.deb` package, and
+  `SHA256SUMS.txt`
 
 ## Documentation
 
-- End users: developers testing Hetzner setups; README with installation,
+- End users: developers testing Hetzner setups, on Windows and Linux;
+  README with installation per host,
   first steps, commands, tray and uninstallation; a list of known deviations
   from Hetzner; a reference of the configuration files; help inside the
   program.
 - Developers: outside contributors; developer guide under `docs/development/` with
-  setup, build/test, E2E against Hyper-V, components, and how to add a
+  setup on Windows and Linux, build/test, E2E against Hyper-V and libvirt, components, and how to add a
   resource.
 
 ## Success criterion

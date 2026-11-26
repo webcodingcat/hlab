@@ -119,8 +119,14 @@ conversation, ask when something is unclear.
 
 All commands run from the repository root, without elevated rights.
 
+- Milestone 2 is developed on Ubuntu 26.04 (Linux host). Until phase 31
+  makes the Taskfile build per host OS, the commands below describe the
+  Windows machine; phase 31 updates this section.
 - Build: `task build` (frontend, `bin/hlabd.exe`, `bin/hlab.exe`,
   `bin/hlab-tray.exe`, Linux `bin/hlab-agent`).
+- Windows check from the Linux machine (from phase 31, every phase of
+  milestone 2): `task check:windows` builds every package and test binary
+  for Windows and lints them; a failure counts like a failing build.
 - Lint: `task lint` (golangci-lint on `./...` plus svelte-check). One
   package or directory: `task lint -- ./internal/store/...` (Go only);
   frontend only: `task lint:frontend`.
@@ -131,7 +137,9 @@ All commands run from the repository root, without elevated rights.
   Ansible in WSL2): `task e2e`; filter by test name with
   `task e2e -- -run <regexp>`, for example `task e2e -- -run 'TestE2E/SRV-01'`.
 - Once per machine, elevated, by the user only: `scripts\dev-setup.ps1`
-  registers the dev service `hlab-dev` running `bin\hlabd.exe`.
+  registers the dev service `hlab-dev` running `bin\hlabd.exe`; on Linux
+  (from phase 31) `sudo scripts/dev-setup.sh` installs `hlab-dev.service`
+  running `bin/hlabd`, the polkit rule and group `hlab`.
 
 ## Repository and CI
 
@@ -140,4 +148,6 @@ All commands run from the repository root, without elevated rights.
   phases run on `wcc/milestone-2` (and so on), and only what `/wcc:release` merges reaches
   `main` (see DECISIONS.md "2026-11-25 Releases through /wcc:release,
   phases do not push"). At the start of a phase, `gh run list --branch main
-  --limit 1` shows the last CI run; a red run is fixed first.
+  --limit 1` shows the last CI run; a red run is fixed first. Once CI
+  runs on `wcc/**` (phase 31), a red run on the milestone branch counts
+  the same.

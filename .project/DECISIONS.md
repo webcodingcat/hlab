@@ -27,6 +27,110 @@ Keep entries short and their titles telling: phases find the entries
 they need by their titles and do not read this file in full. Details belong
 in ARCHITECTURE.md or the plan.
 
+## 2026-11-26 Milestone 2: Linux as a full host
+
+- Type: change
+- Phase: change
+- What: Milestone 2 builds the Linux host of the target vision (KVM/libvirt, systemd, systemd-resolved, the tray and a .deb) next to Windows, as phases 31-37 with requirements LNX-01 to LNX-18, REL-04, REL-05 and DOC-09.
+- Why: The user asked to build the Linux support now.
+- Cost of change: high
+
+## 2026-11-26 Q29 Windows checks during milestone 2
+
+- Type: approval
+- Phase: change
+- What: Every phase runs `task check:windows` (Windows build, test binaries and lint from the Linux machine), CI runs on pushes to `wcc/**` as well, and the full Windows end-to-end and installer suites run once at the milestone end on the Windows machine (LNX-18); details in `decisions/windows-checks.md`.
+- Why: The user decided it in a clarification session.
+- Cost of change: low
+
+## 2026-11-26 Linux distributions and package
+
+- Type: approval
+- Phase: change
+- What: Linux hosts are Ubuntu 24.04 and 26.04 LTS and Debian 13 on x86_64, served by one .deb published only in the GitHub release, without an APT repository.
+- Why: The user chose the smallest test matrix and the same update path as on Windows.
+- Cost of change: medium
+
+## 2026-11-26 Linux parity in one milestone
+
+- Type: approval
+- Phase: change
+- What: Milestone 2 delivers everything Windows has on Linux, the tray included, in one release.
+- Why: The user chose a complete Linux release over a headless first step.
+- Cost of change: low
+
+## 2026-11-26 Linux: group hlab starts and stops the cloud
+
+- Type: approval
+- Phase: change
+- What: hlabd runs as root; members of group `hlab` start and stop the unit through a polkit rule without a password and use the management socket; the package adds the installing user.
+- Why: The user chose the Docker-like group model for goal 3.
+- Cost of change: high
+
+## 2026-11-26 Linux: apt remove keeps data, apt purge deletes it
+
+- Type: approval
+- Phase: change
+- What: `apt remove` removes every VM, network object, DNS rule, the service and the CA trust and keeps the user data; `apt purge` also deletes data, settings and logs; there is no question during removal.
+- Why: The user chose the Debian convention over the Windows dialog.
+- Cost of change: medium
+
+## 2026-11-26 Linux: systemd-resolved is a dependency
+
+- Type: approval
+- Phase: change
+- What: The package depends on systemd-resolved, which on Debian 13 becomes the system resolver when installed; hlab refuses to start when resolved is not the resolver.
+- Why: The user chose one name-resolution path for both distributions.
+- Cost of change: medium
+
+## 2026-11-26 Linux: only host programs reach the servers
+
+- Type: approval
+- Phase: change
+- What: On Linux only programs on the host reach servers and resolve hlab names; containers are not supported, but Docker, ufw and firewalld get runtime exceptions so they do not block hlab.
+- Why: The user chose not to build a WSL2 counterpart for containers.
+- Cost of change: low
+
+## 2026-11-26 Linux: go-libvirt over the libvirt socket
+
+- Type: decision
+- Phase: change
+- What: `platform/libvirt` uses the pure Go `github.com/digitalocean/go-libvirt` at a pinned pseudo-version instead of the cgo binding.
+- Why: hlabd and hlab stay cgo-free and cross-buildable; the wrapper absorbs the unstable API.
+- Cost of change: medium
+
+## 2026-11-26 Linux: isolated bridge ports and a veth host link
+
+- Type: decision
+- Phase: change
+- What: Bridge port isolation with VLAN filtering replaces Hyper-V private VLANs and MAC deny lists, and the host joins the bridge through a veth pair whose bridge end is an isolated port.
+- Why: The bridge device itself is not a port and would let the host reach guests past the appliance (HOST-01).
+- Cost of change: medium
+
+## 2026-11-26 Linux: names and paths
+
+- Type: approval
+- Phase: change
+- What: Units `hlab.service`/`hlab-dev.service`, socket `/run/<profile>/mgmt.sock`, folders `/etc`, `/var/lib`, `/var/log` per profile, catalogs in `/usr/share/hlab/catalog`, programs in `/usr/bin` and `/usr/lib/hlab` (ARCHITECTURE.md "Profiles").
+- Why: Same names as the Windows service; FHS locations that `apt purge` can remove; the user approved them.
+- Cost of change: high
+
+## 2026-11-26 Linux: package suite creates its own test VMs
+
+- Type: decision
+- Phase: change
+- What: `task e2e:package` creates throwaway Ubuntu 24.04, 26.04 and Debian 13 VMs under libvirt itself and tests install, upgrade, remove and purge inside them as root over SSH.
+- Why: On Linux this needs no host root, unlike the Windows test VMs, so the phase can run it unattended.
+- Cost of change: low
+
+## 2026-11-26 Linux: tray without a tray area opens the window
+
+- Type: decision
+- Phase: change
+- What: When no StatusNotifierWatcher is on the session bus, the tray program opens the console window and ends when it closes.
+- Why: GNOME without the AppIndicator extension has no tray area, and the program must stay usable.
+- Cost of change: low
+
 ## 2026-11-26 Upgrade to wcc 0.35.1
 
 - Type: approval

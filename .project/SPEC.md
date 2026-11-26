@@ -7,7 +7,8 @@ Goals and non-goals are in IDEA.md, the requirements in REQUIREMENTS.md.
 Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
 
 - Go 1.27.4 (`go.mod`: `go 1.27`, toolchain pinned) for hlabd, hlab,
-  hlab-tray (Windows/amd64) and hlab-agent (Linux/amd64).
+  hlab-tray (Windows/amd64 and, from milestone 2, Linux/amd64) and
+  hlab-agent (Linux/amd64).
 - Module or package name: Go module path `github.com/webcodingcat/hlab`;
   repository `https://github.com/webcodingcat/hlab`.
 - Go modules: `golang.org/x/sys` v0.50.0 (service, SCM, ACLs, virtdisk),
@@ -23,6 +24,23 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   in-memory transport), `github.com/coder/websocket` v1.8.15 (E22 ran with v1.8.14; server
   console WebSocket in hlabd and the tray's console proxy, phase 23;
   `research/server-console.md`); standard library `net/http`, `log/slog`, `crypto/x509`.
+- Linux host (milestone 2; `research/linux-host.md`):
+  `github.com/digitalocean/go-libvirt` pinned at
+  v0.0.0-20261013170128-efbbdf578ac8 (pure Go libvirt RPC over
+  `/var/run/libvirt/libvirt-sock`, no cgo, so hlabd and hlab build with
+  `CGO_ENABLED=0`; it has no tagged releases and is used only inside
+  `platform/libvirt`), `github.com/godbus/dbus/v5` v5.2.4
+  (systemd-resolved `org.freedesktop.resolve1`),
+  `github.com/coreos/go-systemd/v22` v22.7.0 (unit start/stop over D-Bus,
+  `sd_notify`); `vishvananda/netlink` and `google/nftables` of the stack
+  for the host bridge, routes and the `hlab` nftables tables. System
+  parts, from the distribution: libvirt (`qemu:///system`; 10.0 on Ubuntu
+  24.04, 12.0 on 26.04, 11.3 on Debian 13), QEMU, `qemu-img` (qcow2
+  disks), OVMF with Secure Boot and the Microsoft keys enrolled
+  (firmware autoselection), systemd, polkit (JavaScript rules),
+  systemd-resolved, and the `iptables` command only for Docker's
+  `DOCKER-USER` chain. Disks are qcow2 (thin, backing files for
+  differencing); guests use q35, virtio-scsi and UEFI Secure Boot.
 - Hyper-V: Hyper-V PowerShell module through one persistent Windows
   PowerShell 5.1 process; `CreateVirtualDisk` from virtdisk.dll for volume
   disks.
@@ -31,6 +49,23 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   `@lucide/svelte` 1.75.0, `@novnc/novnc` 1.7.0 (console window, phase 23;
   builds with the default target, ships no types, so the frontend declares
   the module itself; E22), Node.js 24.22.3 LTS for the frontend build (newer Node versions work for development).
+- Tray on Linux (milestone 2): Wails v3.1.0 with its default Linux
+  stack, GTK4 and WebKitGTK 6.0 (not the legacy `gtk3` tag), built with
+  cgo on Linux only; the tray icon is a StatusNotifierItem (GNOME needs the
+  AppIndicator extension). The Linux tray UI tests cannot use CDP
+  (WebKitGTK has none) nor WebDriver (Wails does not enable WebKit
+  automation, E55); phase 35 starts with an experiment that settles how
+  the UI end-to-end tests reach the window, without a test hook in a
+  release build (`research/linux-host.md` section 6). The candidate is an
+  e2e-only tray build with Wails' `server` tag, which serves the same
+  frontend and bindings over HTTP on 127.0.0.1 for Playwright Chromium,
+  like the e2e-only CDP build on Windows; release builds never carry it.
+  If no way is found, phase 35 stops for the user's decision; the UI tests
+  are never weakened.
+- Linux package (milestone 2): nfpm v2.49.0 builds
+  `hlab_<version>_amd64.deb` on Ubuntu 24.04 (oldest glibc of the three
+  targets), with maintainer scripts that branch on dpkg's argument
+  (`remove`, `purge`, `upgrade`).
 - Windows icon resources: `github.com/tc-hib/winres` v0.3.1 (0BSD) in the
   icon generator `tools/icons`, which writes the committed `.syso` files.
 - Storage VM: Debian 13 `generic` cloud image, cloud-init, btrfs-progs
@@ -63,7 +98,7 @@ Versions as of 2026-11-18 (reasoning and sources in DECISIONS.md, "Stack").
   Playwright Test 1.65.1 (TypeScript) for the tray over CDP.
 - Clients in the e2e harness (pinned): hcloud CLI v1.70.2, OpenTofu 1.13.9
   with provider hetznercloud/hcloud 1.70.2, ansible-core 2.22.0 on Python
-  3.13 or newer in WSL2 (installed with `uv` into its own environment, independent of the distro's Python) with
+  3.13 or newer in WSL2 (on the Linux host: on the host itself) (installed with `uv` into its own environment, independent of the distro's Python) with
   collection hetzner.hcloud 7.2.0 and hcloud-python 2.27.0.
 - Hetzner OpenAPI description: `https://docs.hetzner.cloud/cloud.spec.json`
   (OpenAPI 3.1.2), pinned by SHA-256 in `api/openapi.lock`; see
@@ -118,12 +153,13 @@ External descriptions the project must match, such as an API it
 re-implements, a file format or a protocol. Agents read the part a phase
 touches here instead of relying on memory.
 
-- Hetzner Cloud OpenAPI description: `%LocalAppData%\hlab\openapi\cloud.spec.json`
+- Hetzner Cloud OpenAPI description: `<user cache folder>/hlab/openapi/cloud.spec.json`
+  (`%LocalAppData%` on Windows, `~/.cache` on Linux)
   (downloaded by `task openapi` from `https://docs.hetzner.cloud/cloud.spec.json`),
   OpenAPI 3.1.2 pinned by SHA-256 in `api/openapi.lock`; settles the
   request and response shapes, error codes and HTTP statuses hlab serves.
 - Hetzner API OpenAPI description (Storage Boxes):
-  `%LocalAppData%\hlab\openapi\hetzner.spec.json` (downloaded by
+  `<user cache folder>/hlab/openapi/hetzner.spec.json` (downloaded by
   `task openapi` from `https://docs.hetzner.cloud/hetzner.spec.json`, a
   copy from after 2026-04-21), OpenAPI 3.1.2 pinned by SHA-256 in
   `api/hetzner-openapi.lock`; settles the same for `/hetzner/v1`.
@@ -247,6 +283,38 @@ appear here, only names.
   objects differ (ARCHITECTURE.md "Profiles"). Only one of their clouds runs
   at a time: each refuses to start while the other runs, and the end-to-end
   harness refuses to run while the release cloud runs.
+- Linux host (milestone 2; development happens on Ubuntu 26.04 with GNOME):
+  Ubuntu 24.04/26.04 LTS or Debian 13, x86_64, hardware virtualization,
+  `/dev/kvm`, libvirt (`libvirt-daemon-system`), QEMU, `qemu-utils`,
+  `ovmf`, systemd-resolved as the system resolver, the developer in the
+  groups `libvirt`, `kvm` and `hlab`; nested KVM on (`kvm_intel` or
+  `kvm_amd` parameter `nested`) for the package test VMs; for the
+  end-to-end tests at least 16 GB RAM and 100 GB free disk. Go, Node.js,
+  Task, golangci-lint, hcloud, OpenTofu, `uv` with ansible-core and the
+  collection, `rsync`, `borgbackup`, `smbclient`, `lftp`, the GTK4 and
+  WebKitGTK 6.0 development packages (`libgtk-4-dev`,
+  `libwebkitgtk-6.0-dev`) and nfpm on the host, versions as in "Stack".
+  - Elevated rights on Linux: hlabd runs as root (bridge, routes,
+    forwarding, nftables, resolved, CA trust). Once per machine the user
+    runs `scripts/dev-setup.sh` with sudo; it installs the unit
+    `hlab-dev.service` running `bin/hlabd` of the working copy, the polkit
+    rule for group `hlab` and the group with the user in it. After a new
+    login, phases build, start and stop the dev service and run all tests
+    without sudo; Claude Code is never started with root rights. As on
+    Windows, a root service running a binary from a user-writable folder is
+    acceptable only on a development machine.
+  - Package tests (phase 36, `task e2e:package`): the suite creates
+    throwaway libvirt VMs with fresh Ubuntu 24.04, Ubuntu 26.04 and Debian
+    13 cloud images (nested KVM, `qemu:///system`, no host root needed),
+    installs, upgrades, removes and purges the .deb inside them as root
+    over SSH, and deletes the VMs.
+  - Windows is checked from the Linux machine in every phase:
+    `task check:windows` builds every package and test binary (tags `e2e`
+    and `e2einstall` included) with `GOOS=windows` and runs the linter for
+    Windows; a failure counts like a failing build. The full Windows
+    end-to-end and elevated installer suites run once at the end of
+    milestone 2 on the Windows development machine, started by the user
+    (LNX-18, `decisions/windows-checks.md`).
 - Test VMs for the release checks (phase 16), set up by the user with two
   scripts that `docs/development/release-checks.md` describes; Claude
   runs neither and creates neither VM.
@@ -273,22 +341,30 @@ appear here, only names.
 - Host: `https://github.com/webcodingcat/hlab`, public
 - Tool: `gh` logged in with the scopes `repo` and `workflow`
 - Licence: Apache-2.0
-- CI: `.github/workflows/ci.yml`, on pushes to `main` and on pull requests
-  against `main`: `task build`, `task test`, `task lint`, frontend unit
-  tests and the installer build; end-to-end tests stay local
+- CI: `.github/workflows/ci.yml`, on pushes to `main` and `wcc/**` and on
+  pull requests against `main`: `task build`, `task test`, `task lint`,
+  frontend unit tests and the installer build on Windows, and from
+  milestone 2 the Linux build, unit tests, linter and .deb build on
+  Ubuntu 24.04; end-to-end tests stay local
 
 - Repository `https://github.com/webcodingcat/hlab`, public, Apache-2.0
   (`LICENSE` in the root).
 - CI: GitHub Actions on GitHub-hosted `windows-latest` runners, workflow
-  `.github/workflows/ci.yml`, on every push to `main` and every pull request
-  against `main`: build (`task build`), Go unit tests (`task test`), linter
-  (`task lint`), frontend unit tests and the installer build, with the tool
+  `.github/workflows/ci.yml`, on every push to `main` or a `wcc/**` branch
+  and every pull request against `main`: build (`task build`), Go unit
+  tests (`task test`), linter (`task lint`), frontend unit tests and the
+  installer build; from milestone 2 a second job on GitHub-hosted
+  `ubuntu-24.04` runs the Linux build (with the GTK4 and WebKitGTK 6.0
+  development packages installed by apt), the Go unit tests, the linter
+  and `task package:deb`; both jobs run with the tool
   versions of `docs/development/setup.md` and caches for Go modules, the Go
   build and npm; independent jobs run in parallel. End-to-end tests and the
   elevated installer suite stay local (IDEA.md constraints).
 - Workflow `.github/workflows/release.yml` on a pushed tag `vX.Y.Z`:
-  `task installer VERSION=X.Y.Z`, then a GitHub release named `vX.Y.Z`
-  with `hlab-X.Y.Z.msi`, `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt`. The
+  `task installer VERSION=X.Y.Z` on Windows and, from milestone 2,
+  `task package:deb VERSION=X.Y.Z` on `ubuntu-24.04`, then a GitHub
+  release named `vX.Y.Z` with `hlab-X.Y.Z.msi`, `hlab-setup-X.Y.Z.exe`,
+  `hlab_X.Y.Z_amd64.deb` and `SHA256SUMS.txt`. The
   setup programs are not signed; the user guide explains the SmartScreen
   warning.
 - Phases do not push. From milestone 2 on they run on the branch
@@ -310,7 +386,8 @@ appear here, only names.
 - Notes: the message of the annotated tag, which `/wcc:release` writes;
   `release.yml` publishes it with `gh release create --notes-from-tag`
 - Done when: `gh release view vX.Y.Z` lists `hlab-X.Y.Z.msi`,
-  `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt`
+  `hlab-setup-X.Y.Z.exe`, from milestone 2 `hlab_X.Y.Z_amd64.deb`, and
+  `SHA256SUMS.txt`
 
 ## Documentation
 
@@ -327,7 +404,9 @@ secrets").
   badges and a link line; what HLab is; screenshots; prerequisites;
   installation; first steps (project, token, client cloud and Hetzner endpoint settings for
   hcloud, OpenTofu and Ansible); tray program; WSL2 prerequisites;
-  uninstallation; a short note on the MCP server `hlab mcp`; links to the
+  uninstallation; from milestone 2 the same for Linux (prerequisites, the
+  .deb, group `hlab`, the AppIndicator extension on Debian, `apt remove`
+  and `apt purge`); a short note on the MCP server `hlab mcp`; links to the
   other documents. The detailed usage per
   resource, and fault injection with an example per fault kind, live in
   `docs/guide.md`. Images live in `docs/images/`;
@@ -341,16 +420,19 @@ secrets").
 - D4 Known deviations from Hetzner: `docs/deviations.md`, for users: short
   prose grouped by topic (servers, images and backups, volumes, networks
   and IPs, firewalls, DNS, load balancers and certificates, storage boxes,
-  projects and server types, WSL2), saying what a user notices and what is not
+  projects and server types, WSL2, from milestone 2 the Linux host), saying what a user notices and what is not
   available, without routes or endpoint lists; about 250 lines at most.
 - D5 Help inside the program: one help text per tray view in
   `ui/frontend/src/help/<view>.md`, shown by the help button.
 - D6 Developer guide: `docs/development/`, for outside contributors: `setup.md`
-  (tools, `dev-setup.ps1`), `build-and-test.md` (Taskfile targets, unit,
-  e2e, elevated suite), `components.md` (overview linking to the code),
+  (tools, `dev-setup.ps1`, from milestone 2 the Linux machine and
+  `dev-setup.sh`), `build-and-test.md` (Taskfile targets, unit,
+  e2e against Hyper-V and from milestone 2 against libvirt, elevated suite,
+  package suite), `components.md` (overview linking to the code),
   `adding-a-resource.md` (a new resource module step by step),
   `release-checks.md` (setting up the two test VMs and what runs in
-  which, from phase 16), `releasing.md` (CI, tagging and publishing a
+  which, from phase 16; the Linux package test VMs from phase 36),
+  `releasing.md` (CI, tagging and publishing a
   release, from phase 30),
   `api-coverage.md` (every endpoint hlab serves, every endpoint or
   behaviour that differs from Hetzner with its route, and every

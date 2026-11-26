@@ -313,11 +313,55 @@ of IDEA.md rather than a numbered goal.
 - DOC-07 README and guides are understandable for their audience, and the help texts name only views and buttons that exist [manual]
 - DOC-08 `docs/development/release-checks.md` describes how to set up the two test VMs of the release checks with the repository's scripts, which the developer runs (Hyper-V, fresh Windows, nested virtualization; one with the development tools for the elevated installer suite, one without them for the user's flow), and what runs in which [manual]
 
+## Milestone 2
+
+### Linux host (`LNX`)
+
+From milestone 2 hlab runs on two hosts: Windows with Hyper-V, and Linux
+(Ubuntu 24.04 and 26.04 LTS, Debian 13, x86_64) with KVM and libvirt.
+Every requirement of milestone 1 holds on both hosts, except where it
+names a part only Windows has (Hyper-V, VHDX files, WSL2, NRPT, the SCM,
+the Windows trust store, `net use`, the MSI and the setup EXE); VHDX files
+are qcow2 files on Linux, everything else said of them holds; for those,
+the requirement in brackets below is the Linux counterpart. "From WSL2"
+has no Linux counterpart: on Linux only programs on the host reach the
+servers, containers are not supported. On Linux, Ansible runs on the
+host instead of in WSL2.
+
+- LNX-01 on the Linux host every milestone-1 requirement with test level `e2e` that names no Windows-only part passes with the same end-to-end tests (goals 1, 2, 3, 5, 6) [e2e]
+- LNX-02 a member of group `hlab` starts and stops the cloud and uses the management command and the tray without a password prompt; a user outside the group gets a refusal that names the group (LIFE-01, PROJ-05; goal 3) [e2e]
+- LNX-03 the cloud never starts with the system: the systemd unit has no install section and is never enabled (LIFE-06; goal 3) [none]
+- LNX-04 a host shutdown or reboot with a running cloud follows the stop behaviour; after the reboot the cloud is stopped (LIFE-05; goal 3) [manual]
+- LNX-05 while the cloud runs, `hetzner.internal`, the reverse zones of the public range and every DNS zone are routing domains of the hlab host link in systemd-resolved; deleting a zone or stopping the cloud removes it (DNS-03; goals 2, 4) [e2e]
+- LNX-06 stopping the cloud removes the host address, routes, forwarding settings, nftables tables and firewall exceptions it added; starting adds them again (LIFE-07; goal 4) [e2e]
+- LNX-07 with Docker installed (forward policy drop) the host reaches the servers and the servers reach the internet; hlab adds only runtime rules and removes them at stop (goals 2, 4) [e2e]
+- LNX-08 with ufw enabled or firewalld running, hlab issues the runtime exceptions the host link and the bridge need, forwarding and inbound to hlabd's ports alike, and removes them at stop; the test checks the commands issued, not ufw or firewalld themselves (goals 2, 4) [unit]
+- LNX-09 the trust switch adds the hlab CA to the system trust store (`update-ca-certificates`) and removes it again (CERT-04; goal 2) [e2e]
+- LNX-10 the Linux host reads and writes a box's share `backup` and a subaccount's share over SMB with `smbclient` (SBOX-22; goal 2) [e2e]
+- LNX-11 the cloud refuses to start and names exactly what is missing when KVM, libvirt, OVMF with Secure Boot or systemd-resolved as the system resolver is not available (INST-02; goal 3) [unit]
+- LNX-12 the tray program runs on Linux: its icon in GNOME's top bar shows the cloud status and starts and stops the cloud, and every UI requirement of milestone 1 with test level `e2e` passes against it (UI-01 to UI-17; goal 3) [e2e]
+- LNX-13 installed from the .deb, the tray looks and works on Ubuntu 26.04 GNOME and on Debian 13 GNOME with the AppIndicator extension as on Windows and as UI-SPEC.md "Linux host" describes; without a tray area, the application menu entry opens the console window (UI-08; goal 3) [manual]
+- LNX-14 the package installs an application menu entry that opens only the tray program (INST-03; goal 3) [none]
+- LNX-15 `hlab_X.Y.Z_amd64.deb` installs with its dependencies on fresh Ubuntu 24.04, Ubuntu 26.04 and Debian 13, creates group `hlab` and adds the installing user, and after a new login the cloud starts on each, on Debian with systemd-resolved as the system resolver (INST-01; goal 3) [e2e]
+- LNX-16 `apt remove` removes all VMs, the bridge, routes, forwarding settings, nftables tables, firewall exceptions, resolved domains, the service and the CA trust entries and keeps the user data; `apt purge` leaves no file of hlab outside the users' home folders, which Debian packages never touch (INST-04, INST-05; goal 4) [e2e]
+- LNX-17 installing a newer .deb over an older one stops a running cloud and keeps settings and state (INST-06; goal 3) [e2e]
+- LNX-19 the example environment of the success criterion can be created and deleted by hand in the tray on Linux (UI-09; goal 3) [manual]
+- LNX-18 at the end of milestone 2 the full Windows end-to-end suite and the elevated installer suite pass on the Windows development machine (goals 1-6) [manual]
+
+### Repository, CI and releases (`REL`)
+
+- REL-04 CI also runs on pushes to `wcc/**` branches, and every run has an Ubuntu 24.04 job with the Linux build, the Go unit tests and the linter next to the Windows job; from phase 36 the job also builds the .deb [manual]
+- REL-05 a pushed tag `vX.Y.Z` also builds `hlab_X.Y.Z_amd64.deb` and publishes it in the release and in `SHA256SUMS.txt`; README describes installing and removing it [manual]
+
+### Documentation (`DOC`)
+
+- DOC-09 once the package suite exists (phase 36), `docs/development/release-checks.md` describes the Linux package test VMs (fresh Ubuntu 24.04, Ubuntu 26.04 and Debian 13 under libvirt with nested KVM), how the suite creates them and what runs in them [manual]
+
 ## Later
 
 What the target vision in IDEA.md will need, not built yet.
 
-- LINUX-01 run hlab with the tray on Linux with KVM/libvirt
+- none
 
 ## Out of scope
 
@@ -531,3 +575,25 @@ What the target vision in IDEA.md will need, not built yet.
 | DOC-06 | all | x |
 | DOC-07 | all | x |
 | DOC-08 | 16 | x |
+| LNX-01 | 32-37 | |
+| LNX-02 | 31 | |
+| LNX-03 | 31 | |
+| LNX-04 | 34 | |
+| LNX-05 | 33 | |
+| LNX-06 | 34 | |
+| LNX-07 | 33 | |
+| LNX-08 | 33 | |
+| LNX-09 | 33 | |
+| LNX-10 | 33 | |
+| LNX-11 | 31 | |
+| LNX-12 | 35 | |
+| LNX-13 | 36 | |
+| LNX-14 | 36 | |
+| LNX-15 | 36 | |
+| LNX-16 | 36 | |
+| LNX-17 | 36 | |
+| LNX-18 | 37 | |
+| LNX-19 | 37 | |
+| REL-04 | 31 | |
+| REL-05 | 36 | |
+| DOC-09 | 36 | |

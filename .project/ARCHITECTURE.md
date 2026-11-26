@@ -28,6 +28,16 @@ read and write the settings file.
                                      guest VMs (cidata ISO) <-----+ (port ACLs)
 ```
 
+From milestone 2 the same programs also run on a Linux host (Ubuntu
+24.04/26.04 LTS, Debian 13): `hlabd` is a systemd service, VMs run under
+KVM through libvirt, the management API is a Unix socket and host names
+resolve through systemd-resolved. Only the implementations of `platform`,
+`hostnet` and `sysint` differ (`platform/libvirt`, `hostnet/linux`,
+`sysint/linux`); the cloud package picks them by `GOOS`. API, store,
+resource modules, cidata, images, the appliance and the storage VM are the
+same on both hosts. This document writes Windows paths; "Linux host" below
+and the table in "Files and formats" give the Linux ones.
+
 ## Profiles
 
 Every binary is built for one profile, set at link time
@@ -42,6 +52,13 @@ collide on one machine; this document writes the `release` names.
 | Data folder (`%ProgramData%\...`) | `hlab` | `hlab-dev` |
 | Shipped catalogs | `%ProgramFiles%\hlab\catalog` | `catalog\` of the working copy (next to `bin\`) |
 | Switch, VM name prefix, NAT name, NRPT comment, firewall rule group | `hlab` | `hlab-dev` |
+| Linux: systemd unit | `hlab.service` | `hlab-dev.service` |
+| Linux: management socket | `/run/hlab/mgmt.sock` | `/run/hlab-dev/mgmt.sock` |
+| Linux: config, state, log folders | `/etc/hlab`, `/var/lib/hlab`, `/var/log/hlab` | `/etc/hlab-dev`, `/var/lib/hlab-dev`, `/var/log/hlab-dev` |
+| Linux: shipped catalogs | `/usr/share/hlab/catalog` | `catalog/` of the working copy |
+| Linux: bridge, host link, libvirt domain prefix, nftables tables, tap prefix | `hlab-br`, `hlab`, `hlab-`, `hlab`, `h` | `hlabdev-br`, `hlab-dev`, `hlab-dev-`, `hlab-dev`, `d` |
+
+The group `hlab` is shared by both profiles on Linux.
 
 Both profiles use the same public range default, addresses and
 `api.hetzner.internal`, so only one cloud runs at a time: at start,
@@ -50,7 +67,7 @@ the other profile runs. Both may be installed side by side.
 
 ## Components
 
-### hlabd (Windows service)
+### hlabd (Windows service; systemd service on Linux)
 
 - Purpose: the cloud. Runs as `LocalSystem`, start type manual, service name
   `hlab`, started and stopped only by `hlab-tray` or `hlab cloud start|stop`
@@ -323,6 +340,69 @@ Inside `hlabd` (Go packages under `internal/`):
   `9F8233AC-BE49-4C79-8EE3-E7E1985B2077`).
 - Depends on: Hyper-V PowerShell module.
 
+#### platform/libvirt (Linux host, milestone 2)
+
+- Purpose: `platform.Platform` (and the optional `platform.Console`
+  counterpart below) on KVM through libvirt; the only package that knows
+  libvirt.
+- Implementation: `github.com/digitalocean/go-libvirt` over
+  `qemu:///system` (`/var/run/libvirt/libvirt-sock`), one connection per
+  hlabd, reconnected when the socket drops. Domains are persistent, named
+  like the Hyper-V VMs (`hlab-server-<id>`, `hlab-appliance`,
+  `hlab-storage`), machine q35, UEFI with Secure Boot through firmware
+  autoselection (`firmware='efi'`, features `secure-boot` and
+  `enrolled-keys`, `smm`), static memory except where `DynamicMemory` asks
+  for a balloon with the same minimum, `on_poweroff destroy`.
+  - Disks are qcow2 files in the same data folders (`.qcow2` instead of
+    `.vhdx`), created with `qemu-img`; `CreateChildDisk` makes a qcow2 with
+    a backing file. Hard disks sit on one virtio-scsi controller at the
+    LUN the interface names; `page83` becomes the SCSI serial only, with
+    vendor `HC` and product `Volume` for volumes, so guests see
+    `/dev/disk/by-id/scsi-0HC_Volume_<id>` as at Hetzner (a `<wwn>` would
+    remove that link, E50). DVD slots 0 and 1
+    are SCSI CD-ROMs on a second controller, changed live with
+    `UpdateDeviceFlags` and the full device XML including its `<address>`
+    (E50). `ResizeDisk` uses `qemu-img resize` on a detached
+    disk and `BlockResize` on an attached one; `CompactDisk` runs
+    `qemu-img convert` to a new file and replaces the old one.
+  - `Snapshot` of a running disk: `BlockCopy` with the transient-job flag,
+    wait for the `BLOCK_JOB` event (go-libvirt delivers no `BLOCK_JOB_2`;
+    polling the job info is no substitute, E50) with status ready,
+    `BlockJobAbort` without pivot; of a stopped disk a `qemu-img convert`
+    copy. A copy job left on a domain by a crash is aborted at the next
+    cloud start.
+  - `PowerSave` is `ManagedSave` (the next start restores it); `Shutdown`
+    is an ACPI shutdown, `Reboot` an ACPI reboot with the same fallback as
+    Hyper-V; `PowerPause`/`PowerResume` are suspend and resume.
+    `SetStopAction` stores the stop action in the domain metadata only,
+    since hlabd itself saves or shuts down its VMs at a host shutdown (see
+    "Cloud start and stop").
+  - Every domain gets spare PCIe root ports for the NICs and disks it may
+    hot-plug (q35 has no hot-plug slots otherwise, E51); `DetachNIC` and
+    `DetachDisk` return once libvirt reports the device removed, which
+    needs the guest's acknowledgement.
+  - NICs are `<interface type='bridge'>` on the hlab bridge with a fixed tap
+    name (`h<kind letter><id>.<index>`, at most 15 characters), the MAC of
+    the spec and `<port isolated='yes'/>` for every adapter except the
+    appliance's; the segment's VLAN goes into `<vlan>` (access port with
+    the network's VLAN, trunk 2..4092 for the appliance). Bridge port
+    isolation replaces Hyper-V's private VLAN and the MAC deny lists, so
+    `SetNICDeny` only records the list. hlabd re-checks the isolated flag
+    of each tap after a start or hot-plug with netlink.
+  - `SetDiskIOPS` is `SetBlockIoTune` (live), `MetricsAll` reads
+    `ConnectGetAllDomainStats`, `HostResources` reads `/proc/meminfo`,
+    the CPU count and `statfs` of the data folder.
+  - `EnsureSwitch`/`DeleteSwitch` create and remove the bridge
+    (`vlan_filtering` on) with netlink; `SegmentFor` is shared.
+- Console: `platform.RFBSource { OpenRFB(ctx, vm string) (net.Conn,
+  error) }`, an optional extension next to `platform.Console`: each
+  domain has VNC graphics on a Unix socket whose path libvirt chooses;
+  `OpenRFB` reads it from the live domain XML (it changes at every start;
+  QEMU cannot create it in a root-owned VM folder, E50) and returns a
+  connection to it. The console package uses it when
+  the platform has it (see "Server console").
+- Depends on: libvirt, QEMU, `qemu-img`, OVMF.
+
 #### hostnet (interface) and hostnet/windows
 
 - Purpose: everything on the Windows host outside Hyper-V: host IP on the
@@ -379,6 +459,59 @@ Inside `hlabd` (Go packages under `internal/`):
   and nobody at the console there is none. `TrustCA`, `RemoveWSLTrust` and
   the `.wslconfig` reading all use this user (Q28).
 - Depends on: Windows networking (see SPEC.md).
+
+#### hostnet/linux (Linux host, milestone 2)
+
+- Purpose: `hostnet.HostNet` on Linux.
+- Host link: the host does not use the bridge's own address, because the
+  bridge device is not a port and could reach guests directly. A veth pair
+  joins the host to the bridge: the host end `hlab` carries
+  `198.19.0.2/30`, the peer `hlab-host` is an isolated bridge port in the
+  public segment, so the host, like the guests, reaches only the
+  appliance (HOST-01).
+- `Up`: veth and address, route of the public range via `198.19.0.1`,
+  IPv4 forwarding on `hlab` (previous values in `hostnet-restore.json` in
+  the state folder, as on Windows), nftables table `ip hlab` (masquerade of
+  the public range to every other interface, accept in a forward chain)
+  and table `bridge hlab` (on guest ports: drop frames whose source MAC is
+  not the port's, DHCP server and router advertisement packets). Table
+  `ip hlab` masquerades only traffic that arrives on `hlab` (never
+  `iifname "hlab-br"`) and has a raw prerouting chain with
+  `iifname "hlab-br" notrack`, so a loaded `br_netfilter` neither tracks
+  bridged frames nor breaks the NAT (E53). The
+  firewall exceptions below, and the resolved link settings: DNS server
+  `198.19.0.1` and routing domains `~hetzner.internal` plus the reverse
+  zones on link `hlab`, set over D-Bus (`SetLinkDNS`, `SetLinkDomains`,
+  `SetLinkDefaultRoute false`). `SetZones` replaces the routing domains.
+  resolved keeps link settings across its own restart (E52); as a
+  fallback hlabd applies them again on `NameOwnerChanged` of
+  `org.freedesktop.resolve1`.
+- Firewall exceptions, runtime only, each removed by `Down`: when the
+  `iptables` command and Docker's `DOCKER-USER` chain exist, accept rules
+  at its top for traffic in and out of `hlab` and in from `hlab-br` (E53); with ufw active, `ufw route
+  allow` rules for them plus `ufw allow in on hlab` to TCP 8780 and 8781,
+  the inbound rule the Windows Firewall gets (from the appliance to
+  hlabd's listeners); with firewalld running, both interfaces in zone
+  `trusted` (runtime), which covers inbound too. The rules carry the comment `hlab` so `Down` and the
+  package's cleanup find them.
+- `Down` and `hlabd uninstall-cleanup` remove the veth, route, nftables
+  tables, firewall exceptions and resolved settings (`RevertLink`), and
+  restore forwarding. The bridge itself belongs to `platform`.
+- `Check` reports the Linux problems (fatal unless noted): `kvm_missing`
+  (`/dev/kvm`), `libvirt_missing` (socket), `ovmf_secureboot_missing`
+  (no firmware descriptor in `/usr/share/qemu/firmware/*.json` with the
+  features `secure-boot` and `enrolled-keys`; libvirt's domain
+  capabilities do not report enrolled keys, E50), `resolved_not_resolver` (resolve1 not on the bus or
+  `/etc/resolv.conf` not pointing to resolved), `range_collision` and
+  `other_instance_running` as on Windows; WSL codes never occur.
+- `DNSServers` returns resolved's current DNS servers of links with a
+  default route.
+- `TrustCA` writes `/usr/local/share/ca-certificates/hlab.crt` (dev
+  profile: `hlab-dev.crt`) and runs `update-ca-certificates`; off deletes
+  it and runs `update-ca-certificates --fresh`. Browsers with their own
+  store are not touched; the documentation says so.
+- `WatchWSL` does nothing.
+- Depends on: netlink, nftables, D-Bus, systemd-resolved.
 
 #### uninstall and prereq
 
@@ -601,8 +734,34 @@ Inside `hlabd` (Go packages under `internal/`):
   ```
 
   Windows: SCM with the descriptor from DECISIONS.md, preshutdown,
-  named pipe via go-winio. Linux later: systemd unit, polkit rule or group
-  for start/stop, Unix socket, `/etc/hlab` and `/var/lib/hlab`.
+  named pipe via go-winio.
+
+  Linux (`sysint/linux`, milestone 2): `Paths` are `/etc/hlab` (settings
+  and own catalog files; folder `root:hlab` 2775, files 0664),
+  `/var/lib/hlab` (state, data folders, CA; 0750 `root:hlab`, `ca.key`
+  root only), `/var/log/hlab` (0750 `root:hlab`), `/usr/share/hlab/catalog`
+  and `/usr/lib/hlab`. `ServiceControl` starts and stops the unit through
+  systemd's D-Bus API (`StartUnit`/`StopUnit`, mode `replace`), which the
+  polkit rule `/usr/share/polkit-1/rules.d/50-hlab.rules` allows without a
+  password for members of `hlab` and for these two units and the verbs
+  `start` and `stop` only (E54). systemd's refusal for others is a
+  generic "interactive authentication required"; `ServiceControl` turns it
+  into a message naming the group (LNX-02). `StartUnit` returns before
+  hlabd is ready, so `hlab` and the tray wait for the job and the socket
+  with a deadline. `Start` writes its parameters to `/etc/hlab/start.env`
+  (group `hlab` may write it), which the unit reads as
+  `EnvironmentFile=-` and hlabd deletes after reading. `ServiceHost` runs as a `Type=notify` unit: ready after the
+  start completes, SIGTERM is `StopRequested`, and a stop while systemd is
+  shutting the system down (`systemctl is-system-running` reports
+  `stopping`) is `StopHostShutdown`. The unit has no `[Install]` section,
+  `Wants=`/`After=libvirtd.service` and `After=libvirt-guests.service`, so
+  it stops before libvirt and before libvirt-guests (enabled with
+  `ON_SHUTDOWN=shutdown` on Ubuntu 26.04) touches its VMs,
+  `TimeoutStopSec=300`, `KillMode=mixed`. `ListenManagement` creates
+  `/run/hlab/mgmt.sock` (folder 0750, socket 0660, both `root:hlab`);
+  `DialManagement` connects to it. `Installer` (`hlabd install [--dev]`)
+  writes the unit, the polkit rule and the folders and creates the group;
+  the package and `scripts/dev-setup.sh` use it.
 
 ### hlab (management command)
 
@@ -761,6 +920,17 @@ Inside `hlabd` (Go packages under `internal/`):
   to Wails' `AdditionalBrowserArgs`/`WebviewUserDataPath` (Wails clears the
   WebView2 environment variables, E9). Release builds never carry the tag
   (DECISIONS.md "Tray UI tests through a CDP port in an e2e-only build").
+- Linux host (milestone 2): the same program, built with cgo for GTK4
+  and WebKitGTK 6.0. The tray icon is a StatusNotifierItem; when no
+  StatusNotifierWatcher is on the session bus (GNOME without the
+  AppIndicator extension), starting the program opens the console window
+  instead, and closing it ends the program. Start and stop go through
+  `sysint.ServiceControl` (systemd over D-Bus), `PickISOFile` uses the
+  GTK file dialog, and the package installs
+  `/usr/share/applications/hlab.desktop` and the icons, which open only
+  the tray program. The UI end-to-end tests reach the window as phase 35's
+  experiment settles (SPEC.md "Stack"); WebKit automation and so WebDriver
+  are not possible with Wails (E55).
 - Depends on: management API, settings file.
 
 ### Server console (hlabd package `console`, phase 23)
@@ -807,13 +977,20 @@ Inside `hlabd` (Go packages under `internal/`):
   - RFB 3.8: VNC Authentication, Raw encoding, DesktopSize, QEMU Extended
     Key Event; any 32-bpp true-colour pixel format; one connection per
     token.
-- Depends on: platform (`platform.Console`), the hlab CA,
+- Linux host: `platform/libvirt` offers `platform.RFBSource` instead of
+  `platform.Console`. The console package then does the client side of
+  the handshake as above (RFB 3.8, VNC Authentication with the issued
+  password), connects to QEMU's VNC socket with security type None, and
+  relays the RFB messages unchanged in both directions after the
+  ServerInit, so frame rate and input are QEMU's.
+- Depends on: platform (`platform.Console` or `platform.RFBSource`), the hlab CA,
   which issues the listener's certificate for `console.hetzner.internal`
   at every cloud start (`console.Service` gets it as a `tls.Certificate`).
 
 ### Management API (named pipe)
 
-HTTP/1.1 over `\\.\pipe\hlab`, JSON. All paths under `/mgmt/v1`:
+HTTP/1.1 over `\\.\pipe\hlab` (Linux: the Unix socket
+`/run/hlab/mgmt.sock`), JSON. All paths under `/mgmt/v1`:
 
 | Method and path | Purpose |
 |---|---|
@@ -1265,6 +1442,27 @@ locks a resource of type `project`.
   `Theme="hyperlinkLicense"`, an empty `LicenseUrl` and the own
   `theme.xml`/`theme.wxl`.
 
+#### Debian package (Linux host, milestone 2)
+
+- `hlab_<version>_amd64.deb`, built by `task package:deb VERSION=x.y.z`
+  with nfpm (sources in `packaging/deb/`): `/usr/bin/hlab`,
+  `/usr/bin/hlab-tray`, `/usr/lib/hlab/hlabd`, `/usr/lib/hlab/hlab-agent`,
+  `/usr/share/hlab/catalog/`, the desktop entry and icons.
+- Depends: `systemd`, `polkitd`, `libvirt-daemon-system`, `qemu-system-x86`,
+  `qemu-utils`, `ovmf`, `systemd-resolved`, `nftables`, `ca-certificates`,
+  `libgtk-4-1`, `libwebkitgtk-6.0-4` (brings `libsoup-3.0`; never
+  `policykit-1`, which Ubuntu 26.04 no longer has); Recommends:
+  `gnome-shell-extension-appindicator`, `smbclient`. Phase 36 checks every
+  name on all three distributions.
+- `postinst configure`: `hlabd install` (group `hlab`, unit, polkit rule,
+  folders), adds the installing user (`SUDO_USER`, else `PKEXEC_UID`) to
+  `hlab` and says that a new login is needed; never enables or starts the
+  unit. `prerm upgrade`: `hlabd stop-service`. `prerm remove`: `hlabd
+  uninstall-cleanup --keep-data` (service, VMs, bridge, host objects, CA
+  trust; data stays). `postrm purge`: deletes `/etc/hlab`, `/var/lib/hlab`
+  and `/var/log/hlab` and the group, with shell tools only (the binaries
+  are gone by then). An upgrade never runs the cleanup.
+
 ## Network
 
 All addresses below derive from the configured public range
@@ -1341,6 +1539,28 @@ the agent reads its own from the `transit` file of its seed.
 - NRPT: one suffix rule per zone (`.example.net`) also covers the zone
   apex (E5).
 
+### Linux host
+
+The addresses, the appliance and every rule above stay the same; the
+Hyper-V parts are replaced:
+
+- The virtual switch is the bridge `hlab-br` with VLAN filtering. Guest
+  public adapters and the host's veth peer `hlab-host` are isolated
+  ports in VLAN 1 (untagged); the appliance's public adapter is the one
+  non-isolated port. Private adapters are isolated access ports with the
+  network's VLAN; the appliance's trunk adapter carries VLANs 2..4092
+  tagged. Isolation replaces the private VLAN and the MAC deny ACLs.
+- MAC spoofing, DHCP guard and router guard are the `bridge hlab`
+  nftables table (see "hostnet/linux").
+- Outbound: masquerade of the public range in table `ip hlab` instead of
+  WinNAT; forwarding on the host link only.
+- Names: resolved routing domains on link `hlab` instead of NRPT rules,
+  one per zone; the reverse zones the same way.
+- Inbound to hlabd's listeners on `198.19.0.2:8780` and `8781` needs no
+  rule unless ufw or firewalld filters input; then hostnet/linux adds the
+  exception (see there).
+- WSL2 does not exist; containers on the host are not supported.
+
 ## Data schema
 
 SQLite file `%ProgramData%\hlab\state.db`, `PRAGMA user_version` = schema
@@ -1373,6 +1593,17 @@ CREATE TABLE kv       (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- allocati
   discard the state.
 
 ## Files and formats
+
+On the Linux host the paths map as follows (release profile):
+`%ProgramData%\hlab\settings.toml`, `isos.custom.json`,
+`server-types.custom.json`, `storage-box-types.custom.json` and
+`start.env` are in `/etc/hlab/`; `state.db`, `ca\`, `catalog\`,
+`uninstall-stop`, `hostnet-restore.json` and the data folder
+(`/var/lib/hlab/data`) in `/var/lib/hlab/`; `logs\hlabd.log` is
+`/var/log/hlab/hlabd.log`; `%ProgramFiles%\hlab\catalog` is
+`/usr/share/hlab/catalog`. The ACL "Interactive Users modify" is group
+`hlab` write. Disks are `.qcow2`. The settings default for
+`storage.data_folder` is `/var/lib/hlab/data`.
 
 | Path | Format | Writer |
 |---|---|---|
@@ -1443,16 +1674,21 @@ level = "info"
   `hostnet.Down`.
   hlabd sets its preshutdown timeout to 180 s
   (`SERVICE_CONFIG_PRESHUTDOWN_INFO`).
+- Linux host: start and stop are the same sequence. At a host shutdown
+  systemd stops `hlab.service` before `libvirtd.service` and
+  `libvirt-guests.service` (ordering), and
+  hlabd itself applies the stop behaviour to its VMs (managed save or
+  shutdown with the 60 s fallback), since libvirt-guests may be off or
+  configured otherwise; it does not change the stored status, so the
+  next start resumes as after a Windows shutdown. `TimeoutStopSec=300`
+  bounds it.
 
 ## Extension to the target vision
 
-- Linux host with KVM/libvirt: implement `platform.Platform` with libvirt,
-  `hostnet.HostNet` with Linux routes and systemd-resolved instead of NRPT,
-  `sysint` with systemd, a Unix socket and Linux paths, and build the tray
-  with Wails on Linux (its start/stop goes through `sysint.ServiceControl`);
-  the API, store, resource modules, cidata, images (VHDX becomes qcow2 inside
-  `platform`) and the appliance stay unchanged. Every `%ProgramData%` path in
-  this document is `sysint.Paths` on Windows.
+- The Linux host of the target vision is built in milestone 2 (see the
+  Linux sections above). Every `%ProgramData%` path in this document is
+  `sysint.Paths` on Windows and its Linux counterpart in "Files and
+  formats". The target vision holds no further item.
 
 ## Verified assumptions
 
@@ -1465,3 +1701,4 @@ level = "info"
 - Wails v3.1.0 ignores WebView2 environment variables; CDP works through `AdditionalBrowserArgs` (E9).
 - A non-admin interactive user starts and stops a service whose DACL grants IU RP/WP, using minimal SCM rights (E10).
 - Save/resume keeps the guest running; vmms precedes services at Windows shutdown (E11).
+- Linux host (E49-E55): bridge port isolation with VLAN filtering and a veth host link give the reachability of the Hyper-V private VLAN; go-libvirt without cgo boots Secure Boot guests with a SCSI cidata CD, gives `scsi-0HC_Volume_<id>`, hot-plugs, changes CDs, managed-saves and live-copies disks; libvirt sets isolated ports and VLANs on taps itself; resolved routing domains over D-Bus resolve hlab zones only; DOCKER-USER rules undo Docker's forward drop; the polkit rule starts exactly one unit without a password; a Wails v3.1.0 tray registers in GNOME on Ubuntu 26.04. Open: Docker's nftables backend, Debian 13, NetworkManager, a real host shutdown, UI tests without CDP.

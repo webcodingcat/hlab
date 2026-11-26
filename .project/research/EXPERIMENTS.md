@@ -1530,3 +1530,313 @@ Observed (VM time from start):
 Pitfalls: Get-VM Uptime includes firmware (add 2 to 4.3 s to guest `Up`);
 PowerShell starts in 1 to 5 s; scripts need LF endings; a failed guest's
 `cloud-init.log` may be gone after reset (use the persistent journal).
+
+## E49 Bridge port isolation with VLAN filtering replaces the private VLAN (Linux host)
+
+- Result: confirmed
+- Checked on: 2026-11-26, Ubuntu 26.04 host, kernel 7.0.0-44, iproute2 6.19.0, inside `unshare -rnm` (user, network and mount namespace, no root on the host)
+- By: experiment
+- Status: valid
+
+Method: one bridge `hlab-br` (`vlan_filtering 1`, `bridge vlan del dev
+hlab-br vid 1 self`, no address); veth pairs into named namespaces
+(`mount -t tmpfs none /run` first, then `ip netns add`). Host link `hlab`
+198.19.0.2/30, peer `hlab-host` isolated, VLAN 1 untagged, route
+203.0.113.0/24 via 198.19.0.1. Appliance `eth0` (198.19.0.1/30 and
+172.31.1.1/32, forwarding on, `send_redirects=0`) on a non-isolated port in
+VLAN 1; appliance trunk `eth1` on a non-isolated port with `bridge vlan del
+vid 1` and `bridge vlan add vid 2-4092`, subinterfaces `eth1.10`
+(10.0.0.1/24) and `eth1.11` (10.1.0.1/24). Guests: public /32 with on-link
+gateway 172.31.1.1 on isolated VLAN 1 ports; private on isolated ports with
+`bridge vlan add dev <port> vid <n> pvid untagged` (vid 1 removed); g1 and g2
+in VLAN 10, g3 in VLAN 11. Isolation: `bridge link set dev <port> isolated on`.
+
+Observed (11 of 11 as expected, `ping -c2 -W1`):
+- Works: host to appliance; host to g1 and g1 to g2 routed via the
+  appliance; g1 to host via the appliance; g1 and g3 private to the
+  appliance's subinterface of their VLAN.
+- Blocked: g1 to g2 and g1 to host with a hand-made on-link `/32` route;
+  host to g1 with `ip route replace 203.0.113.11/32 dev hlab`; g1 private to
+  g2 private (same VLAN); g3 with a VLAN-10 address to 10.0.0.1. ARP for
+  the blocked peers stays FAILED.
+- `ping -6 ff02::1%eth0` from g1 is answered only by g1 itself and the
+  appliance.
+
+Meaning: isolated ports plus VLAN access ports and a tagged trunk give the
+same reachability as the Hyper-V private VLAN (E1) and need no MAC deny
+lists; the bridge device must stay without address and without VLAN
+membership (`self`). Pitfall: a new bridge port gets VLAN 1 PVID untagged
+by default (`vlan_default_pvid`), so a private port must drop vid 1.
+
+## E50 libvirt on the Linux host through go-libvirt: Secure Boot, disk ids, CD change, disk hot-plug, managed save, live copy, VNC socket
+
+- Result: confirmed with corrections: no `<wwn>` on volumes (it removes the `scsi-0HC_Volume_<id>` link); go-libvirt drops BLOCK_JOB_2 events, use BLOCK_JOB; CD update needs the `<address>`; VNC socket not in a root-owned folder
+- Checked on: 2026-11-26, Ubuntu 26.04 host, libvirt 12.0.0, QEMU 10.2.1, ovmf 2025.11, qemu:///system as a member of group libvirt; guest Ubuntu 26.04 cloud image (resolute 2026-11, sha256 7b90593f...); github.com/digitalocean/go-libvirt v0.0.0-20261013170128-efbbdf578ac8 (still the latest), Go 1.27.4, `CGO_ENABLED=0`
+- By: experiment and code reading (go-libvirt `rpc.go`)
+- Status: valid
+
+Method: a small Go program (`libvirt.NewWithDialer(dialers.NewLocal())`,
+`Connect()`) with `DomainDefineXMLFlags`, `DomainCreateWithFlags`,
+`DomainGetState`, `DomainHasManagedSaveImage`, `DomainManagedSave`,
+`DomainAttachDeviceFlags`/`DomainDetachDeviceFlags`/`DomainUpdateDeviceFlags`
+(flags `DomainDeviceModifyLive|DomainDeviceModifyConfig`), `DomainBlockCopy`,
+`DomainGetBlockJobInfo`, `DomainBlockJobAbort`, `SubscribeEvents`,
+`DomainUndefineFlags(DomainUndefineNvram|DomainUndefineManagedSave)`. Domain:
+q35, `<os firmware='efi'>` with `<firmware><feature enabled='yes'
+name='secure-boot'/><feature enabled='yes' name='enrolled-keys'/></firmware>`
+and `<loader secure='yes'/>`, `<smm state='on'/>`, two virtio-scsi
+controllers; root qcow2 (backing file = cloud image) at controller 0 unit 0;
+volume disks `<serial>100001</serial><vendor>HC</vendor><product>Volume</product>`
+at units 1 and 2 (unit 2 also `<wwn>5000c50015ea71ad</wwn>`); NoCloud seed ISO
+(`xorriso -as mkisofs -V cidata -J -r`) as SCSI CD-ROM at controller 1 unit 0,
+empty CD-ROM at unit 1.
+
+Observed:
+- Firmware autoselection picked `/usr/share/OVMF/OVMF_CODE_4M.ms.fd` with
+  NVRAM template `OVMF_VARS_4M.ms.fd`; guest: `mokutil --sb-state` =
+  "SecureBoot enabled", kernel lockdown on; cloud-init read the seed from the
+  SCSI CD (SSH key applied).
+- `/dev/disk/by-id`: `scsi-0HC_Volume_100001` for the serial-only disk; the
+  disk with `<wwn>` gets only `scsi-35000c50015ea71ad` and
+  `wwn-0x5000c50015ea71ad`, no `scsi-0HC_...` link. Root disk
+  `scsi-0QEMU_QEMU_HARDDISK_drive-scsi0-0-0-0`, CDs
+  `scsi-0QEMU_QEMU_CD-ROM_drive-scsi1-0-0-<unit>`. Guest kernel names do
+  not follow the units (unit 2 became sdb), libvirt target names (`sdb`) are
+  not guest names.
+- Disk hot-plug (`attach`, live+config, unit 3) appears at once as
+  `scsi-0HC_Volume_100003`.
+- CD change on the running domain: `DomainUpdateDeviceFlags` with the full
+  `<disk device='cdrom'>` XML; without `<address>` it fails with "cannot
+  modify field 'address' of the disk". Eject (no `<source>`) 2.0 s, insert
+  0.17 s; the guest sees the new label at once.
+- Managed save 1.8 s (2 GB guest); state shutoff reason 5 (saved),
+  `HasManagedSaveImage` 1; `DomainCreateWithFlags` restores it (reason 3),
+  guest uptime continues, SSH back after 5 s, hot-plugged disk and CDs kept.
+- Live copy: without the transient-job flag libvirt refuses ("domain is not
+  transient", virsh `blockcopy` without `--transient-job`). With
+  `DomainBlockCopyTransientJob` and dest XML `<disk type='file'><driver
+  type='qcow2'/><source file='...'/></disk>`: READY after 0.48 s for 300 MiB,
+  `DomainBlockJobAbort(d, path, 0)` (no pivot) leaves the domain on the old
+  file; the copy holds the marker written before the abort, not the one
+  written after; copy file root:root 0600, full (no backing file).
+- Pitfall: go-libvirt's `Route` knows no BLOCK_JOB_2 procedure, so
+  `SubscribeEvents(ctx, DomainEventIDBlockJob2, ...)` never delivers (the job
+  sat at 100 % without an event). `DomainEventIDBlockJob` (8) works: message
+  `*DomainEventCallbackBlockJobMsg`, `Msg.Path` is the source file path,
+  `Status 3` = READY. Polling `DomainGetBlockJobInfo` is no substitute: it
+  reported cur=end=1 right after the start, before any data was copied.
+- Pitfall: if the copying process dies, the transient job stays at READY on
+  the domain; it must be aborted (`blockjob --abort`) before the next copy.
+- Domain capabilities list loaders (`OVMF_CODE_4M.ms.fd`, `.secboot.fd`)
+  and `secure` yes/no, but no `enrolled-keys` feature; the firmware
+  descriptors in `/usr/share/qemu/firmware/*.json` do
+  (`40-edk2-x86_64-secure-enrolled.json`: enrolled-keys, requires-smm,
+  secure-boot).
+- VNC: `<listen type='socket' socket='<folder>/vnc.sock'/>` in a folder owned
+  root 0711 fails at start ("Failed to bind socket ... Permission denied");
+  the same folder owned `libvirt-qemu:kvm` works; `<listen type='socket'/>`
+  without a path gives `/var/lib/libvirt/qemu/domain-<n>-<name>/vnc.sock`
+  (new `<n>` at every start, also after a restore), root reads
+  `RFB 003.008`.
+- Redefining a domain by name needs its UUID in the XML ("already defined
+  with UUID"); keep the UUID or undefine first.
+
+Meaning: `platform/libvirt` as designed works with go-libvirt; volume disks
+get serial, vendor and product but no WWN; the copy waits for the BLOCK_JOB
+event; the VNC socket path is read from the live domain XML (or the VM folder
+is owned by libvirt-qemu); `Check` reads the firmware descriptors for
+`enrolled-keys`.
+
+## E51 libvirt NICs on a VLAN-filtering bridge: isolated port, VLAN, fixed tap name, hot-plug
+
+- Result: confirmed; hot-plug needs spare PCIe root ports
+- Checked on: 2026-11-26, throwaway Ubuntu 26.04 VM (nested KVM, libvirt 12.0.0, QEMU 10.2.1, kernel 7.0.0-43) as root; same go-libvirt program as E50
+- By: experiment
+- Status: valid
+
+Method: bridge `hlab-br` with `vlan_filtering 1`; diskless q35 domains with
+`<interface type='bridge'><source bridge='hlab-br'/><mac .../><target
+dev='hs1.0'/><model type='virtio'/><port isolated='yes'/></interface>`,
+private NIC with `<vlan><tag id='10'/></vlan>`, appliance trunk with `<vlan
+trunk='yes'>` and one `<tag id='N'/>` per VLAN 2..4092; then `bridge -d link
+show` and `bridge vlan show`.
+
+Observed:
+- libvirt sets `isolated on` for `<port isolated='yes'/>` and leaves it off
+  otherwise; access VLAN: `10 PVID Egress Untagged` only (no VLAN 1); trunk:
+  tagged 2..4092 (4091 `<tag>` elements, domain start 0.9 s), no VLAN 1.
+- After managed save and restore all flags and VLANs are set again.
+- Hot-plugged NIC (live+config) gets isolated flag and VLAN 11 at once.
+- Tap names with a dot and up to 15 characters work (`hs1234567890.10`);
+  a requested name starting with `vnet` is ignored (libvirt gives `vnet0`).
+- q35 without spare root ports: NIC hot-plug fails with "No more available
+  PCI slots"; with `<controller type='pci' index='0' model='pcie-root'/>` and
+  8 `<controller type='pci' model='pcie-root-port'/>` it works (3 spare ports
+  were all taken by the NIC, USB and balloon).
+- Detach returns ok at once but the tap stays while the guest has no OS to
+  acknowledge the unplug; completion must be awaited (DEVICE_REMOVED event).
+
+Meaning: libvirt does the isolation and VLAN work itself on a plain Linux
+bridge; hlabd only re-checks. Every domain needs spare PCIe root ports for
+the NICs it may hot-plug.
+
+## E52 systemd-resolved routing domains on the host link over D-Bus
+
+- Result: confirmed; refuted: that a restart of resolved drops the link settings
+- Checked on: 2026-11-26, throwaway Ubuntu 26.04 VM, systemd 259.9, as root; DNS server dnsmasq 2.92 in a network namespace
+- By: experiment (`busctl`, the same D-Bus methods godbus calls)
+- Status: valid
+
+Method: veth `hlab` 198.19.0.2/30, peer in a namespace with dnsmasq on
+198.19.0.1 (`--address=/hetzner.internal/10.9.9.9`, a PTR record in
+113.0.203.in-addr.arpa, `--log-queries`); calls on
+`org.freedesktop.resolve1 /org/freedesktop/resolve1
+org.freedesktop.resolve1.Manager`:
+`SetLinkDNS 'ia(iay)' <idx> 1 2 4 198 19 0 1`,
+`SetLinkDomains 'ia(sb)' <idx> 2 hetzner.internal true 113.0.203.in-addr.arpa true`,
+`SetLinkDefaultRoute 'ib' <idx> false`, `RevertLink 'i' <idx>`.
+
+Observed:
+- `resolvectl status hlab`: DNS server 198.19.0.1, domains `~hetzner.internal
+  ~113.0.203.in-addr.arpa`, `-DefaultRoute`.
+- `a.hetzner.internal` (resolvectl and `getent hosts`) answered via link
+  hlab; PTR for 203.0.113.5 via hlab; `ubuntu.com` via the uplink, and
+  dnsmasq never saw it; 203.0.114.5 not sent to hlab.
+- `SetLinkDomains` replaces the whole list.
+- `systemctl restart systemd-resolved` keeps DNS server and domains of the
+  link (resolved stores them under /run); reapplying on `NameOwnerChanged`
+  is harmless but not needed for a restart.
+- `RevertLink` removes server and domains; `c.hetzner.internal` then is
+  not found.
+- A non-root caller gets "Access denied ... interactive authentication";
+  hlabd (root) needs no polkit rule.
+- NetworkManager on the Ubuntu 26.04 desktop (1.54.3): udev rule
+  `85-nm-unmanaged.rules` leaves veth devices not named `eth*` unmanaged,
+  so NM does not overwrite the settings on `hlab` (read on the
+  development machine, not tested with a running cloud).
+
+## E53 Docker's forward policy DROP and hlab's forwarded traffic
+
+- Result: confirmed: DOCKER-USER accept rules repair the outbound path; new: with `br_netfilter` loaded the bridge itself breaks and the masquerade must be limited and bridged packets kept out of conntrack
+- Checked on: 2026-11-26, throwaway Ubuntu 26.04 VM, Docker 29.1.3 (docker.io, default iptables backend), iptables 1.8.11 (nf_tables), nftables 1.1.6, kernel 7.0.0-43, as root
+- By: experiment
+- Status: valid; Docker's nftables backend still open
+
+Method: topology of E49 in the VM (bridge with isolated host and guest
+ports, appliance namespace with default route via 198.19.0.2), host
+forwarding on `hlab`, table:
+
+```
+table ip hlab {
+  chain postrouting { type nat hook postrouting priority srcnat; policy accept;
+    iifname "hlab" ip saddr 203.0.113.0/24 oifname != "hlab" masquerade
+  }
+  chain forward { type filter hook forward priority filter; policy accept;
+    iifname "hlab" accept
+    oifname "hlab" ct state established,related accept
+  }
+}
+```
+
+Test: guest pings 172.31.1.1 (bridged), host pings the guest, guest pings
+192.168.122.1 (outside the VM).
+
+Observed:
+- FORWARD policy DROP with Docker running. Bridged guest-appliance traffic
+  and host-to-guest work; guest to outside fails although hlab's own forward
+  chain accepts (a drop in `ip filter` FORWARD wins).
+- `iptables -I DOCKER-USER -i hlab -m comment --comment hlab -j ACCEPT` and
+  `iptables -I DOCKER-USER -o hlab -m conntrack --ctstate RELATED,ESTABLISHED
+  -m comment --comment hlab -j ACCEPT`: guest reaches the outside.
+- Removal by comment (`iptables -S DOCKER-USER | grep -- '--comment hlab'`,
+  `-A` to `-D`) leaves DOCKER-USER empty; `systemctl restart docker` keeps
+  foreign DOCKER-USER rules.
+- With `br_netfilter` loaded (`bridge-nf-call-iptables=1`; Docker 29 did not
+  load it here, other software may): bridged frames pass iptables FORWARD,
+  so guest to appliance fails too; `-I DOCKER-USER -i hlab-br ... -j ACCEPT`
+  repairs it. Guest to outside still fails: the bridged pass creates the
+  conntrack entry first, so the routed pass on `hlab` is never NATed. A
+  chain `type filter hook prerouting priority raw` in `ip hlab` with
+  `iifname "hlab-br" notrack` (or `ct zone set 7`) repairs it.
+- Without `iifname "hlab"` in the masquerade rule, bridged packets with
+  br_netfilter are masqueraded on `hlab-br` (no address) and dropped.
+- Docker with `"firewall-backend": "nftables"`: table `ip docker-bridges`
+  with policy accept chains; the old `ip filter` FORWARD DROP stayed from
+  the iptables run, so the result is inconclusive.
+
+Meaning: the firewall exceptions need, besides the two DOCKER-USER rules on
+`hlab`, a DOCKER-USER accept for `-i hlab-br` and a notrack rule for
+bridged packets (both harmless without br_netfilter), and the masquerade
+must match `iifname "hlab"`.
+
+## E54 polkit rule for one unit and one group; unit without [Install] and Type=notify
+
+- Result: confirmed
+- Checked on: 2026-11-26, throwaway Ubuntu 26.04 VM, systemd 259.9, polkitd 127; users alice (group hlab) and bob (not), both over SSH
+- By: experiment
+- Status: valid
+
+Method: `/etc/systemd/system/hlab-feas.service` with `[Unit]
+Wants=libvirtd.service After=libvirtd.service`, `[Service] Type=notify
+ExecStart=<python, sleeps 2 s, sends READY=1 and STATUS= to $NOTIFY_SOCKET>
+TimeoutStopSec=300 RuntimeDirectory=hlab-feas`, no `[Install]`; rule
+`/etc/polkit-1/rules.d/50-hlab-feas.rules`:
+
+```
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "hlab-feas.service" &&
+        ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+        subject.isInGroup("hlab")) {
+        return polkit.Result.YES;
+    }
+});
+```
+
+Observed:
+- `is-enabled`: static; `systemctl enable` refuses ("no installation config").
+- alice, SSH without and with a TTY: `systemctl start` (blocks 2.0 s until
+  READY, rc 0), `restart`, `stop` without a prompt; `busctl call ...
+  StartUnit ss hlab-feas.service replace` works too but returns the job at
+  once (state activating), so a caller must wait for the job or the socket.
+- alice: `reload-or-restart cron`, `restart ssh`, `enable hlab-feas` denied.
+- bob: start over systemctl and D-Bus: "Access denied as the requested
+  operation requires interactive authentication. However, interactive
+  authentication has not been enabled by the calling program." (rc 1); the
+  message does not name the group, so `hlab` must say it. With a TTY
+  systemctl would start a password agent for bob.
+- polkitd picked up the new rule file without a restart.
+- Package name: `policykit-1` does not exist on Ubuntu 26.04, `polkitd` does.
+
+Also read on the Ubuntu 26.04 development machine: monolithic
+`libvirtd.service` is active (no `virtqemud`), `libvirt-guests.service` is
+enabled with `ON_SHUTDOWN=shutdown`, `PARALLEL_SHUTDOWN=10`,
+`SHUTDOWN_TIMEOUT=300`, ordered only after the libvirt sockets, not after
+`libvirtd.service`; nothing orders it against a unit that is only `After=libvirtd.service`.
+
+## E55 Wails v3.1.0 tray program on Linux (GTK4, WebKitGTK 6.0)
+
+- Result: confirmed for build and tray registration; UI end-to-end access without CDP open
+- Checked on: 2026-11-26, Ubuntu 26.04 development machine, GNOME session (Wayland) with `ubuntu-appindicators@ubuntu.com`, GTK 4.22.4, WebKitGTK 2.52.6 (libgtk-4-dev and libwebkitgtk-6.0-dev already installed), Go 1.27.4
+- By: experiment and code reading (Wails v3.1.0 sources)
+- Status: valid
+
+Method: minimal app: `application.New` with `AssetFileServerFS`, a hidden
+`app.Window.NewWithOptions` window, `app.SystemTray.New()` with
+`SetLabel`, `SetTooltip`, `SetMenu`; `CGO_ENABLED=1 go build`; run 8 s;
+`busctl --user` on `org.kde.StatusNotifierWatcher`
+`RegisteredStatusNotifierItems`.
+
+Observed:
+- Build 14 s cold, binary 17 MB, only deprecation warnings
+  (`gdk_x11_surface_get_xid`); links libgtk-4.so.1, libwebkitgtk-6.0.so.4,
+  libjavascriptcoregtk-6.0.so.1 and libsoup-3.0.so.0. Default build tags
+  select `linux_cgo.go` (`pkg-config: gtk4 webkitgtk-6.0`); gtk3 needs `-tags gtk3`.
+- The tray registered as `org.kde.StatusNotifierItem-<pid>-1` with the
+  watcher on GNOME 50; log shows `GTK=4.22.4 WebKitGTK=2.52.6`.
+- Wails does not call `webkit_web_context_set_automation_allowed`, so
+  WebKitWebDriver (package `webkitgtk-webdriver`, not installed) cannot
+  drive its windows. v3.1.0 has a `server` build tag (`ServerOptions{Host,
+  Port}`) that serves the frontend and bindings over HTTP/WebSocket, which
+  a browser-based Playwright run could reach; not tried, and it would be a
+  second build of the tray with a local port.

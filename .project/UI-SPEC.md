@@ -266,6 +266,21 @@ everywhere.
   focus, Enter submits forms, Escape closes dialogs; tables are real `<table>` elements; icons
   have labels.
 
+## Linux host (milestone 2)
+
+The console window, its views and behaviour are the same as on Windows.
+What differs:
+
+- The tray icon is a StatusNotifierItem in GNOME's top bar (AppIndicator
+  extension); its menu has the same items as on Windows. GNOME shows the
+  menu on a click, so a click opens the menu, not the window.
+- The window has GNOME's own frame and title bar (client-side
+  decorations by GTK); the top bar of the console sits below it.
+- File choosers (own ISO from a local file) are GTK file dialogs.
+- Without a tray area (no StatusNotifierWatcher on the session bus), the
+  program opens the console window at start and ends when it closes; the
+  application menu entry "HLab" starts it.
+
 ## Language of the interface
 
 - The product is called "HLab" wherever it is named as a name: window
