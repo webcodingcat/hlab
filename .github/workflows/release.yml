@@ -36,6 +36,10 @@ jobs:
           }
           "VERSION=$version" >> $env:GITHUB_ENV
       - uses: actions/checkout@v7
+      - name: Fetch the annotated tag
+        # actions/checkout leaves the tag without its message; the release
+        # notes come from it (--notes-from-tag).
+        run: git fetch --force --no-tags origin "refs/tags/$($env:GITHUB_REF_NAME):refs/tags/$($env:GITHUB_REF_NAME)"
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -77,5 +81,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$env:GITHUB_REF_NAME" "bin/hlab-$env:VERSION.msi" "bin/hlab-setup-$env:VERSION.exe" bin/SHA256SUMS.txt --title "$env:GITHUB_REF_NAME" --verify-tag --generate-notes
+          gh release create "$env:GITHUB_REF_NAME" "bin/hlab-$env:VERSION.msi" "bin/hlab-setup-$env:VERSION.exe" bin/SHA256SUMS.txt --title "$env:GITHUB_REF_NAME" --verify-tag --notes-from-tag
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

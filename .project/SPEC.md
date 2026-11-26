@@ -311,6 +311,8 @@ appear here, only names.
   (`gh run list --commit <sha>`)
 - The tag starts: the workflow `.github/workflows/release.yml` (see
   "Repository")
+- Notes: the message of the annotated tag, which `/wcc:release` writes;
+  `release.yml` publishes it with `gh release create --notes-from-tag`
 - Done when: `gh release view vX.Y.Z` lists `hlab-X.Y.Z.msi`,
   `hlab-setup-X.Y.Z.exe` and `SHA256SUMS.txt`
 
