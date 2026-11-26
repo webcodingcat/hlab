@@ -5420,3 +5420,11 @@ in ARCHITECTURE.md or the plan.
 - What: project files brought from wcc 0.35.1 to 0.36.0: version line, the keys "End users" and "Developers" in IDEA.md "Documentation" in the template's form; the section "Repository and publication" that IDEA.md now needs follows with `/wcc:change`.
 - Why: the skills of the installed version search for these keys and rules
 - Cost of change: low
+
+## 2026-11-26 Repository is public
+
+- Type: change
+- Phase: change
+- What: IDEA.md gets "Repository and publication" (public on GitHub `webcodingcat/hlab` under Apache-2.0, a GitHub release per version with MSI, setup EXE and `SHA256SUMS.txt`); SPEC.md "Repository", REL-01, the project CLAUDE.md and `docs/development/releasing.md` say public, and the done steps "phase 30 creates it private, the user makes it public" are removed.
+- Why: the user made the repository public with the release v0.1.0.
+- Cost of change: low

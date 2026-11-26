@@ -270,19 +270,15 @@ appear here, only names.
 
 ## Repository
 
-- Host: `https://github.com/webcodingcat/hlab`, private; the user makes it
-  public themselves
+- Host: `https://github.com/webcodingcat/hlab`, public
 - Tool: `gh` logged in with the scopes `repo` and `workflow`
 - Licence: Apache-2.0
 - CI: `.github/workflows/ci.yml`, on pushes to `main` and on pull requests
   against `main`: `task build`, `task test`, `task lint`, frontend unit
   tests and the installer build; end-to-end tests stay local
 
-- Repository `https://github.com/webcodingcat/hlab`, Apache-2.0 (`LICENSE`
-  in the root). Phase 30 creates it private with `gh` (the user's login)
-  and pushes `main` with its history unchanged; the user makes it public
-  (DECISIONS.md "2026-11-25 Releases through /wcc:release, phases do not
-  push").
+- Repository `https://github.com/webcodingcat/hlab`, public, Apache-2.0
+  (`LICENSE` in the root).
 - CI: GitHub Actions on GitHub-hosted `windows-latest` runners, workflow
   `.github/workflows/ci.yml`, on every push to `main` and every pull request
   against `main`: build (`task build`), Go unit tests (`task test`), linter

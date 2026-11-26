@@ -168,6 +168,12 @@ is built for now.
 - Open source on GitHub under Apache-2.0; outside contributions possible.
   End-to-end tests against Hyper-V run locally, not in hosted CI.
 
+## Repository and publication
+
+- Repository: public on GitHub (`webcodingcat/hlab`) under Apache-2.0
+- Publication: release artifacts: a GitHub release per version with the
+  MSI, the setup EXE and `SHA256SUMS.txt`
+
 ## Documentation
 
 - End users: developers testing Hetzner setups; README with installation,

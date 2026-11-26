@@ -41,9 +41,8 @@ prints the log of the failed steps only.
 
 ### Minutes
 
-The repository is private, so CI uses GitHub's free allowance for private
-repositories: 12 USD of runner time a month, about 1,200 minutes on
-Windows runners. A new push to a pull request cancels the running CI of
+The repository is public, so CI on GitHub-hosted runners uses no paid
+minutes. A new push to a pull request cancels the running CI of
 that pull request, which then shows as cancelled. A run on `main` is never
 interrupted; a newer push to `main` waits until it has finished.
 
