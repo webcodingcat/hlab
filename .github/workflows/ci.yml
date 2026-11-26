@@ -1,11 +1,12 @@
 # CI of hlab: build, Go unit tests, linter, frontend unit tests and the
-# installer build on every push to main and every pull request against main.
+# installer build on every push to main or a wcc/** milestone branch and
+# every pull request against main.
 # End-to-end tests and the elevated installer suite stay local.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'wcc/**']
   pull_request:
     branches: [main]
 

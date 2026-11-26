@@ -124,9 +124,14 @@ All commands run from the repository root, without elevated rights.
   Windows machine; phase 31 updates this section.
 - Build: `task build` (frontend, `bin/hlabd.exe`, `bin/hlab.exe`,
   `bin/hlab-tray.exe`, Linux `bin/hlab-agent`).
-- Windows check from the Linux machine (from phase 31, every phase of
-  milestone 2): `task check:windows` builds every package and test binary
-  for Windows and lints them; a failure counts like a failing build.
+- Windows check from the Linux machine (every phase of milestone 2):
+  from phase 31 `task check:windows`; until then
+  `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...`, the same with
+  `go test -run XXX_none -exec /bin/true ./...` (test binaries) and
+  `golangci-lint run ./...`; a failure counts like a failing build.
+- On Linux before phase 31, `task build` and `task test` still fail in
+  the Windows-only packages (`cmd/hlab-tray`, `internal/platform/hyperv`,
+  `test/docs`); phase 31 makes them build per host OS.
 - Lint: `task lint` (golangci-lint on `./...` plus svelte-check). One
   package or directory: `task lint -- ./internal/store/...` (Go only);
   frontend only: `task lint:frontend`.
